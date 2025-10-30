@@ -10,6 +10,8 @@
     background:linear-gradient(180deg,#e6d0a8,#8a6d46);
     font-family:Inter,system-ui,Arial;
   }
+  /* Evitar que gestos de navegação do browser interfiram com arrastar */
+  #world{ touch-action:none; }
   #ui{
     position:absolute;left:12px;top:12px;z-index:10;
     background:rgba(0,0,0,.36);color:#fff;
@@ -146,17 +148,36 @@ function buildBuilder(){
 function setupMouse(){
   const mouse = Mouse.create(render.canvas);
   const mouseConstraint = MouseConstraint.create(engine, {
-    mouse, constraint:{ stiffness:0.2, render:{ visible:false } }
+    mouse, constraint:{ stiffness:0.6, render:{ visible:false } }
   });
   World.add(world, mouseConstraint);
   render.mouse=mouse;
 
-  render.canvas.addEventListener('mousedown', e=>{
-    if(mode!=='play')return;
-    const p={x:e.offsetX,y:e.offsetY};
-    const found=Query.point(blocks,p);
-    if(found.length){ World.remove(world,found[0]); blocks=blocks.filter(b=>b!==found[0]); }
-  });
+  // Click inteligente: remover bloco apenas em "click" (sem arrastar)
+  let downInfo = { active:false, x:0, y:0, t:0 };
+  const canvas = render.canvas;
+
+  canvas.addEventListener('pointerdown', e=>{
+    if(mode!=="play") return;
+    if(e.pointerType==='mouse' && e.button!==0) return; // apenas botão principal no rato
+    downInfo = { active:true, x:e.offsetX, y:e.offsetY, t:performance.now() };
+  }, { passive:false });
+
+  canvas.addEventListener('pointerup', e=>{
+    if(!downInfo.active) return;
+    const dt = performance.now() - downInfo.t;
+    const dx = e.offsetX - downInfo.x, dy = e.offsetY - downInfo.y;
+    const moved = Math.hypot(dx,dy) > 6;
+    if(mode==='play' && !moved && dt < 220){
+      const p={x:e.offsetX,y:e.offsetY};
+      const found=Query.point(blocks,p);
+      if(found.length){
+        World.remove(world,found[0]);
+        blocks = blocks.filter(b=>b!==found[0]);
+      }
+    }
+    downInfo.active=false;
+  }, { passive:false });
 }
 
 function toggle3D(){
