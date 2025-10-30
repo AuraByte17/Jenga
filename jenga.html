@@ -1,690 +1,238 @@
-<!DOCTYPE html>
-<html lang="pt">
+<!doctype html>
+<html lang="pt-PT">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Torre Instável (Corrigido)</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f8ff;
-            color: #333;
-            user-select: none;
-            -webkit-user-select: none;
-            touch-action: none;
-        }
-
-        #canvas-container {
-            width: 100vw;
-            height: 100vh;
-            display: block;
-        }
-
-        #info-box {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            max-width: 300px;
-            border: 1px solid #eee;
-            z-index: 10;
-        }
-
-        #info-box h1 {
-            margin: 0 0 10px 0;
-            font-size: 24px;
-        }
-
-        #info-box p {
-            margin: 5px 0;
-            font-size: 14px;
-            line-height: 1.4;
-        }
-        
-        #info-box li {
-            font-size: 14px;
-            color: #555;
-            margin-top: 5px;
-        }
-
-        #game-over {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(255, 255, 255, 0.95);
-            padding: 40px;
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            text-align: center;
-            display: none; 
-            z-index: 100;
-        }
-
-        #game-over h2 {
-            margin: 0 0 10px 0;
-            font-size: 32px;
-            color: #e74c3c;
-        }
-
-        #game-over p {
-            margin: 0 0 25px 0;
-            font-size: 18px;
-        }
-
-        button {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            font-size: 16px;
-            font-weight: 700;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background-color 0.3s ease, transform 0.2s ease;
-        }
-
-        button:hover {
-            background-color: #2980b9;
-            transform: translateY(-2px);
-        }
-
-        #status {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(52, 152, 219, 0.9);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 700;
-            display: none;
-            z-index: 10;
-        }
-    </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Jenga Aprimorado — Play + Builder</title>
+<style>
+  html,body{
+    margin:0;padding:0;overflow:hidden;
+    background:linear-gradient(180deg,#e6d0a8,#8a6d46);
+    font-family:Inter,system-ui,Arial;
+  }
+  /* Evitar que gestos de navegação do browser interfiram com arrastar */
+  #world{ touch-action:none; }
+  #ui{
+    position:absolute;left:12px;top:12px;z-index:10;
+    background:rgba(0,0,0,.36);color:#fff;
+    padding:10px;border-radius:10px;backdrop-filter:blur(4px)
+  }
+  #ui button{
+    margin:4px;padding:8px 10px;border-radius:8px;
+    border:none;background:#111;color:#fff;cursor:pointer
+  }
+  #ui .btnActive{background:#2eaa3a}
+  #instructions{
+    position:absolute;right:12px;top:12px;z-index:10;
+    background:rgba(0,0,0,.36);padding:10px;border-radius:10px;
+    color:#fff;max-width:320px;font-size:13px
+  }
+</style>
 </head>
 <body>
-
-    <div id="info-box">
-        <h1>Torre Instável</h1>
-        <div id="mode-controls" style="margin-bottom:10px;">
-            <button id="jenga-mode-button">Modo Jenga</button>
-            <button id="builder-mode-button" style="margin-left:8px;">Modo Builder</button>
-        </div>
-        <div id="builder-controls" style="margin-bottom:10px; display:none;">
-            <button id="add-block-button">Adicionar bloco</button>
-            <button id="clear-builder-button" style="margin-left:8px;">Limpar</button>
-        </div>
-        <div id="help-text">
-            <p><strong>Objectivo (Jenga):</strong> Retira blocos e evita que a torre caia.</p>
-            <p><strong>Objectivo (Builder):</strong> Constrói livremente com blocos e física estável.</p>
-            <p><strong>Controlos:</strong>
-                <li><strong>Rodar Câmara:</strong> Botão direito do rato ou 2 dedos</li>
-                <li><strong>Mover Bloco:</strong> Clicar e arrastar o bloco</li>
-                <li><strong>Zoom:</strong> Roda do rato ou pinça</li>
-            </p>
-        </div>
-    </div>
-
-    <div id="status">A segurar bloco...</div>
-
-    <div id="game-over">
-        <h2>Jogo Terminado!</h2>
-        <p>A torre caiu. Tenta outra vez!</p>
-        <button id="reset-button">Jogar Novamente</button>
-    </div>
-
-    <div id="canvas-container"></div>
-
-    <script>
-        let scene, camera, renderer, controls;
-        let world; 
-        let blocks = []; 
-        let gameState = 'SELECT_BLOCK'; 
-
-        const MODES = { JENGA: 'JENGA', BUILDER: 'BUILDER' };
-        let mode = MODES.JENGA;
-
-        const BLOCK_HEIGHT = 0.5;
-        const BLOCK_WIDTH = 0.5;
-        const BLOCK_DEPTH = 1.5;
-        const TOWER_LAYERS = 10;
-        const FALL_THRESHOLD = -5;
-
-        let currentTopY; 
-        const blockShape = new CANNON.Box(new CANNON.Vec3(BLOCK_DEPTH / 2, BLOCK_HEIGHT / 2, BLOCK_WIDTH / 2));
-        const blockGeometry = new THREE.BoxGeometry(BLOCK_DEPTH, BLOCK_HEIGHT, BLOCK_WIDTH);
-        const blockMaterial = new CANNON.Material("blockMaterial"); 
-        
-        const colors = [0xff6347, 0x4682b4, 0x32cd32, 0xffd700, 0x6a5acd, 0xfa8072];
-
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-        let movePlane = new THREE.Plane();
-        
-        let selectedBody = null;
-        let selectedMesh = null;
-        let grabConstraint = null;
-        let grabBody;
-        let clock;
-        
-        let isDragging = false;
-        let dragStartPos = { x: 0, y: 0 };
-
-        function init() {
-            world = new CANNON.World();
-            world.gravity.set(0, -9.82, 0);
-            // Broadphase e solver mais estáveis
-            world.broadphase = new CANNON.SAPBroadphase(world);
-            world.solver.iterations = 50;
-            world.solver.tolerance = 0.001;
-            world.allowSleep = true;
-
-            // Material de contacto por defeito mais estável
-            world.defaultContactMaterial.friction = 0.8;
-            world.defaultContactMaterial.restitution = 0.02;
-            world.defaultContactMaterial.contactEquationStiffness = 1e9;
-            world.defaultContactMaterial.contactEquationRelaxation = 5;
-            world.defaultContactMaterial.frictionEquationStiffness = 1e5;
-            world.defaultContactMaterial.frictionEquationRelaxation = 3;
-
-            const block_block_contact = new CANNON.ContactMaterial(blockMaterial, blockMaterial, {
-                friction: 0.85,
-                restitution: 0.02,
-                contactEquationStiffness: 1e9,
-                contactEquationRelaxation: 5,
-                frictionEquationStiffness: 1e5,
-                frictionEquationRelaxation: 3
-            });
-            world.addContactMaterial(block_block_contact);
-
-            grabBody = new CANNON.Body({ 
-                mass: 0, 
-                type: CANNON.Body.KINEMATIC,
-                collisionFilterGroup: 0,
-                collisionFilterMask: 0
-            });
-            grabBody.addShape(new CANNON.Particle());
-            world.addBody(grabBody);
-
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87ceeb);
-
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(5, TOWER_LAYERS * BLOCK_HEIGHT * 0.7, 5);
-            camera.lookAt(0, TOWER_LAYERS * BLOCK_HEIGHT * 0.5, 0);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-            document.getElementById('canvas-container').appendChild(renderer.domElement);
-
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(10, 20, 5);
-            directionalLight.castShadow = true;
-            scene.add(directionalLight);
-
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.target.set(0, TOWER_LAYERS * BLOCK_HEIGHT * 0.5, 0);
-            controls.enableDamping = true;
-            controls.mouseButtons = {
-                LEFT: null,
-                MIDDLE: THREE.MOUSE.DOLLY,
-                RIGHT: THREE.MOUSE.ROTATE
-            };
-
-            createGround();
-            buildTower();
-
-            window.addEventListener('resize', onWindowResize);
-            document.getElementById('reset-button').addEventListener('click', resetGame);
-
-            const canvas = renderer.domElement;
-            canvas.addEventListener('mousedown', onMouseDown);
-            canvas.addEventListener('mousemove', onMouseMove);
-            canvas.addEventListener('mouseup', onMouseUp);
-            canvas.addEventListener('mouseleave', onMouseUp);
-            
-            canvas.addEventListener('touchstart', onTouchStart, { passive: false });
-            canvas.addEventListener('touchmove', onTouchMove, { passive: false });
-            canvas.addEventListener('touchend', onTouchEnd);
-
-            // UI listeners
-            document.getElementById('jenga-mode-button').addEventListener('click', () => enterJengaMode());
-            document.getElementById('builder-mode-button').addEventListener('click', () => enterBuilderMode());
-            document.getElementById('add-block-button').addEventListener('click', addBuilderBlock);
-            document.getElementById('clear-builder-button').addEventListener('click', () => { if (mode === MODES.BUILDER) clearBlocks(); });
-
-            clock = new THREE.Clock();
-            animate();
-        }
-
-        function createGround() {
-            const groundShape = new CANNON.Plane();
-            const groundBody = new CANNON.Body({ mass: 0, material: blockMaterial });
-            groundBody.addShape(groundShape);
-            groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-            world.addBody(groundBody);
-
-            const groundGeometry = new THREE.PlaneGeometry(100, 100);
-            const groundMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228b22 });
-            const groundMesh = new THREE.Mesh(groundGeometry, groundMaterialMesh);
-            groundMesh.rotation.x = -Math.PI / 2;
-            groundMesh.receiveShadow = true;
-            scene.add(groundMesh);
-        }
-
-        function buildTower() {
-            currentTopY = BLOCK_HEIGHT / 2; 
-
-            for (let i = 0; i < TOWER_LAYERS; i++) {
-                const isRotated = i % 2 === 0;
-                const layerColor = colors[i % colors.length];
-                const blockMaterialMesh = new THREE.MeshStandardMaterial({ color: layerColor });
-
-                for (let j = 0; j < 3; j++) {
-                    // Blocos começam como STATIC (congelados, sem física)
-                    const blockBody = new CANNON.Body({ 
-                        mass: 0,
-                        type: CANNON.Body.STATIC,
-                        material: blockMaterial,
-                        linearDamping: 0.4,
-                        angularDamping: 0.5
-                    });
-                    let x, z;
-                    
-                    if (isRotated) {
-                        x = 0;
-                        z = (j - 1) * (BLOCK_WIDTH + 0.01);
-                        blockBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
-                    } else {
-                        x = (j - 1) * (BLOCK_WIDTH + 0.01);
-                        z = 0;
-                    }
-                    
-                    blockBody.position.set(x, currentTopY, z); 
-                    
-                    blockBody.addShape(blockShape);
-                    world.addBody(blockBody);
-
-                    const blockMesh = new THREE.Mesh(blockGeometry, blockMaterialMesh);
-                    blockMesh.castShadow = true;
-                    blockMesh.receiveShadow = true;
-                    
-                    blockBody.userData = { mesh: blockMesh, originalColor: layerColor };
-                    blockMesh.userData = { body: blockBody };
-
-                    scene.add(blockMesh);
-                    blocks.push({ mesh: blockMesh, body: blockBody });
-                }
-                currentTopY += BLOCK_HEIGHT;
-            }
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            const dt = clock.getDelta();
-            if (gameState !== 'GAME_OVER') {
-                world.step(1 / 60, dt, 4);
-            }
-            
-            controls.update(); 
-
-            for (const block of blocks) {
-                block.mesh.position.copy(block.body.position);
-                block.mesh.quaternion.copy(block.body.quaternion);
-                // Limitar velocidades para estabilidade
-                if (block.body.type === CANNON.Body.DYNAMIC) {
-                    clampVec3(block.body.velocity, 12);
-                    clampVec3(block.body.angularVelocity, 18);
-                }
-            }
-
-            if (mode === MODES.JENGA && gameState === 'SELECT_BLOCK') {
-                checkCollapse();
-            }
-
-            renderer.render(scene, camera);
-        }
-
-        function checkCollapse() {
-            for (const block of blocks) {
-                // Só verificar blocos dinâmicos (que já foram tocados)
-                if (block.body.type !== CANNON.Body.DYNAMIC) continue;
-                
-                const up = new THREE.Vector3(0, 1, 0);
-                const blockUp = new THREE.Vector3(0, 1, 0).applyQuaternion(block.mesh.quaternion);
-                
-                if (block.body.position.y < FALL_THRESHOLD || up.dot(blockUp) < 0.3) {
-                    triggerGameOver();
-                    break;
-                }
-            }
-        }
-
-        function triggerGameOver() {
-            if (gameState === 'GAME_OVER') return;
-            gameState = 'GAME_OVER';
-            if (mode === MODES.JENGA) {
-                document.getElementById('game-over').style.display = 'block';
-            }
-            document.getElementById('status').style.display = 'none';
-        }
-
-        function resetGame() {
-            if (grabConstraint) {
-                world.removeConstraint(grabConstraint);
-                grabConstraint = null;
-            }
-
-            clearBlocks();
-
-            document.getElementById('game-over').style.display = 'none';
-            document.getElementById('status').style.display = 'none';
-            gameState = 'SELECT_BLOCK';
-            selectedBody = null;
-            selectedMesh = null;
-
-            if (mode === MODES.JENGA) {
-                buildTower();
-                controls.target.set(0, TOWER_LAYERS * BLOCK_HEIGHT * 0.5, 0);
-                camera.position.set(5, TOWER_LAYERS * BLOCK_HEIGHT * 0.7, 5);
-            } else {
-                controls.target.set(0, BLOCK_HEIGHT * 2, 0);
-                camera.position.set(6, 6, 6);
-            }
-            controls.update();
-        }
-
-        function clearBlocks() {
-            for (const block of blocks) {
-                scene.remove(block.mesh);
-                world.removeBody(block.body);
-            }
-            blocks = [];
-        }
-
-        function getIntersect(clientX, clientY) {
-            mouse.x = (clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersectObjects = blocks.map(b => b.mesh);
-            const intersects = raycaster.intersectObjects(intersectObjects);
-            return intersects.length > 0 ? intersects[0] : null;
-        }
-
-        function makeBlockDynamic(body) {
-            // Converter bloco de STATIC para DYNAMIC
-            body.type = CANNON.Body.DYNAMIC;
-            body.mass = 1.0;
-            configureDynamicBody(body);
-            body.updateMassProperties();
-            body.wakeUp();
-        }
-
-        function configureDynamicBody(body) {
-            body.linearDamping = 0.3;
-            body.angularDamping = 0.5;
-            body.sleepSpeedLimit = 0.1;
-            body.sleepTimeLimit = 0.5;
-        }
-
-        function makeSurroundingBlocksDynamic(selectedBody) {
-            // Tornar blocos próximos dinâmicos também
-            const selectedPos = selectedBody.position;
-            const proximityThreshold = BLOCK_DEPTH * 2;
-            
-            for (const block of blocks) {
-                if (block.body === selectedBody) continue;
-                if (block.body.type === CANNON.Body.DYNAMIC) continue;
-                
-                const distance = selectedPos.distanceTo(block.body.position);
-                if (distance < proximityThreshold) {
-                    makeBlockDynamic(block.body);
-                }
-            }
-        }
-
-        function grabBlock(intersect, clientX, clientY) {
-            const clickedMesh = intersect.object;
-            
-            if (mode === MODES.JENGA) {
-                if (clickedMesh.position.y > currentTopY - BLOCK_HEIGHT * 3.5) {
-                    return false;
-                }
-            }
-
-            gameState = 'BLOCK_HELD';
-            selectedBody = clickedMesh.userData.body;
-            selectedMesh = clickedMesh;
-            
-            // Converter bloco para dinâmico quando agarrado
-            makeBlockDynamic(selectedBody);
-            
-            // Tornar blocos próximos também dinâmicos (só no JENGA)
-            if (mode === MODES.JENGA) {
-                makeSurroundingBlocksDynamic(selectedBody);
-            }
-            
-            // Feedback visual
-            selectedMesh.material.emissive = new THREE.Color(0x444444);
-            document.getElementById('status').style.display = 'block';
-
-            if (mode === MODES.BUILDER) {
-                // Movimento plano horizontal à altura do bloco
-                movePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -selectedBody.position.y);
-            } else {
-                // Plano perpendicular à câmara
-                movePlane.setFromNormalAndCoplanarPoint(
-                    camera.getWorldDirection(movePlane.normal),
-                    intersect.point
-                );
-            }
-
-            grabBody.position.copy(intersect.point);
-
-            const localPoint = new CANNON.Vec3();
-            selectedBody.pointToLocalFrame(intersect.point, localPoint);
-            
-            grabConstraint = new CANNON.PointToPointConstraint(
-                grabBody, 
-                new CANNON.Vec3(0, 0, 0),
-                selectedBody, 
-                localPoint,
-                mode === MODES.BUILDER ? 300 : 1000
-            );
-            world.addConstraint(grabConstraint);
-            
-            dragStartPos = { x: clientX, y: clientY };
-            return true;
-        }
-
-        function moveGrabbedBlock(clientX, clientY) {
-            if (gameState !== 'BLOCK_HELD' || !grabConstraint) return;
-
-            isDragging = true;
-
-            mouse.x = (clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-
-            const newIntersectPoint = new THREE.Vector3();
-            raycaster.ray.intersectPlane(movePlane, newIntersectPoint);
-
-            if (newIntersectPoint) {
-                grabBody.position.copy(newIntersectPoint);
-                
-                if (selectedBody && mode === MODES.JENGA) {
-                    const direction = new CANNON.Vec3(
-                        newIntersectPoint.x - selectedBody.position.x,
-                        newIntersectPoint.y - selectedBody.position.y,
-                        newIntersectPoint.z - selectedBody.position.z
-                    );
-                    direction.scale(4, direction);
-                    selectedBody.velocity.copy(direction);
-                }
-            }
-        }
-
-        function releaseBlock() {
-            if (gameState !== 'BLOCK_HELD') return;
-
-            gameState = 'SELECT_BLOCK';
-            document.getElementById('status').style.display = 'none';
-
-            if (grabConstraint) {
-                world.removeConstraint(grabConstraint);
-                grabConstraint = null;
-            }
-            
-            if (selectedBody) {
-                selectedBody.wakeUp();
-                if (mode === MODES.BUILDER) {
-                    // Reduzir velocidade após soltar para evitar instabilidades
-                    selectedBody.velocity.scale(0.25, selectedBody.velocity);
-                    selectedBody.angularVelocity.scale(0.25, selectedBody.angularVelocity);
-                }
-                
-                if (selectedMesh && selectedMesh.userData.body) {
-                    selectedMesh.material.emissive = new THREE.Color(0x000000);
-                }
-                
-                selectedBody = null;
-                selectedMesh = null;
-            }
-            
-            isDragging = false;
-        }
-
-        function onMouseDown(event) {
-            if (event.button !== 0) return;
-            if (gameState !== 'SELECT_BLOCK') return;
-            
-            const intersect = getIntersect(event.clientX, event.clientY);
-            if (intersect) {
-                grabBlock(intersect, event.clientX, event.clientY);
-            }
-        }
-
-        function onMouseMove(event) {
-            moveGrabbedBlock(event.clientX, event.clientY);
-        }
-
-        function onMouseUp(event) {
-            releaseBlock();
-        }
-
-        function onTouchStart(event) {
-            event.preventDefault();
-            
-            if (event.touches.length === 1 && gameState === 'SELECT_BLOCK') {
-                const touch = event.touches[0];
-                const intersect = getIntersect(touch.clientX, touch.clientY);
-                
-                if (intersect) {
-                    grabBlock(intersect, touch.clientX, touch.clientY);
-                }
-            } else if (event.touches.length === 2) {
-                releaseBlock();
-            }
-        }
-
-        function onTouchMove(event) {
-            event.preventDefault();
-            
-            if (event.touches.length === 1 && gameState === 'BLOCK_HELD') {
-                const touch = event.touches[0];
-                moveGrabbedBlock(touch.clientX, touch.clientY);
-            }
-        }
-
-        function onTouchEnd(event) {
-            if (event.touches.length === 0) {
-                releaseBlock();
-            }
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function clampVec3(vec, maxLen) {
-            const len = Math.sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z);
-            if (len > maxLen && len > 0) {
-                const scale = maxLen / len;
-                vec.x *= scale; vec.y *= scale; vec.z *= scale;
-            }
-        }
-
-        function updateUIForMode() {
-            const builderControls = document.getElementById('builder-controls');
-            const gameOver = document.getElementById('game-over');
-            if (mode === MODES.BUILDER) {
-                builderControls.style.display = 'block';
-                gameOver.style.display = 'none';
-            } else {
-                builderControls.style.display = 'none';
-            }
-        }
-
-        function enterJengaMode() {
-            mode = MODES.JENGA;
-            resetGame();
-            updateUIForMode();
-        }
-
-        function enterBuilderMode() {
-            mode = MODES.BUILDER;
-            resetGame();
-            updateUIForMode();
-        }
-
-        function addBuilderBlock() {
-            if (mode !== MODES.BUILDER) return;
-            const layerColor = colors[Math.floor(Math.random() * colors.length)];
-            const blockMaterialMesh = new THREE.MeshStandardMaterial({ color: layerColor });
-
-            const blockBody = new CANNON.Body({ 
-                mass: 1.0,
-                type: CANNON.Body.DYNAMIC,
-                material: blockMaterial
-            });
-            blockBody.addShape(blockShape);
-            configureDynamicBody(blockBody);
-
-            const target = controls.target.clone();
-            blockBody.position.set(target.x + (Math.random() - 0.5) * 2, BLOCK_HEIGHT * 1.5, target.z + (Math.random() - 0.5) * 2);
-            world.addBody(blockBody);
-
-            const blockMesh = new THREE.Mesh(blockGeometry, blockMaterialMesh);
-            blockMesh.castShadow = true;
-            blockMesh.receiveShadow = true;
-            blockBody.userData = { mesh: blockMesh, originalColor: layerColor };
-            blockMesh.userData = { body: blockBody };
-            scene.add(blockMesh);
-            blocks.push({ mesh: blockMesh, body: blockBody });
-        }
-
-        init();
-    </script>
+<canvas id="world"></canvas>
+
+<div id="ui">
+  <div>
+    <button id="playMode" class="btnActive">Play</button>
+    <button id="builderMode">Builder</button>
+  </div>
+  <div>
+    <button id="resetBtn">Reiniciar</button>
+    <button id="toggle3D">3D Simulado</button>
+    <button id="testGravity">Test Gravity</button>
+  </div>
+  <div id="status" style="font-size:13px;margin-top:6px">A carregar...</div>
+</div>
+
+<div id="instructions">
+  <b>Instruções</b>
+  <ul>
+    <li><b>Play:</b> arrasta ou clica para remover blocos.</li>
+    <li><b>Builder:</b> arrasta blocos da pilha para construir.</li>
+    <li>Botão “Test Gravity” aplica gravidade na construção.</li>
+  </ul>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
+<script>
+const { Engine, Render, Runner, World, Bodies, Body, Events, Mouse, MouseConstraint, Query } = Matter;
+
+let engine, world, render, runner;
+let blocks = [];
+let staticWalls = [];
+let mode = 'play';
+let mode3D = false;
+let gravityActive = false;
+
+const ROWS = 8, BLOCKS_PER_ROW = 3, BLOCK_W = 120, BLOCK_H = 30, GAP = 2;
+const DENSITY = 0.0028;
+
+function init(){
+  if(render){ Render.stop(render); Runner.stop(runner); render.canvas.remove(); }
+
+  engine = Engine.create();
+  world = engine.world;
+  engine.gravity.y = 1;
+
+  const canvas = document.getElementById('world');
+  canvas.width = innerWidth; canvas.height = innerHeight;
+
+  render = Render.create({
+    canvas,
+    engine,
+    options:{ width:innerWidth, height:innerHeight, wireframes:false, background:'transparent' }
+  });
+  runner = Runner.create();
+
+  createWalls();
+  setupMouse();
+  buildPlayTower();
+
+  Runner.run(runner,engine);
+  Render.run(render);
+  status('Modo Play');
+}
+
+function createWalls(){
+  staticWalls.forEach(w=>World.remove(world,w));
+  const t=120;
+  const ground=Bodies.rectangle(innerWidth/2,innerHeight+40,innerWidth*2,80,{isStatic:true});
+  const left=Bodies.rectangle(-t/2,innerHeight/2,t,innerHeight*3,{isStatic:true});
+  const right=Bodies.rectangle(innerWidth+t/2,innerHeight/2,t,innerHeight*3,{isStatic:true});
+  staticWalls=[ground,left,right];
+  World.add(world,staticWalls);
+}
+
+function buildPlayTower(){
+  clearBlocks();
+  const cx=innerWidth/2, baseY=innerHeight-120;
+  for(let r=0;r<ROWS;r++){
+    const horizontal=r%2===0;
+    const y=baseY-r*(BLOCK_H+GAP);
+    for(let i=0;i<BLOCKS_PER_ROW;i++){
+      const x=horizontal
+        ? cx-BLOCK_W+i*(BLOCK_W+GAP)
+        : cx+(i-1)*(BLOCK_H+GAP);
+      const w=horizontal?BLOCK_W:BLOCK_H;
+      const h=horizontal?BLOCK_H:BLOCK_W;
+      const b=Bodies.rectangle(x,y,w,h,{
+        friction:0.9,frictionStatic:1,restitution:0,
+        density:DENSITY,chamfer:{radius:4},
+        render:{fillStyle:horizontal?'#d1a76a':'#b88546'}
+      });
+      blocks.push(b);
+      World.add(world,b);
+    }
+  }
+  for(let i=0;i<20;i++)Engine.update(engine,1000/60);
+}
+
+function buildBuilder(){
+  clearBlocks();
+  engine.gravity.y=0;
+  const pileX=innerWidth-150;
+  for(let i=0;i<24;i++){
+    const horiz=i%2===0;
+    const w=horiz?BLOCK_W:BLOCK_H;
+    const h=horiz?BLOCK_H:BLOCK_W;
+    const b=Bodies.rectangle(pileX,100+i*6,w,h,{
+      friction:0.9,frictionStatic:1,density:DENSITY,
+      chamfer:{radius:4},render:{fillStyle:horiz?'#d1a76a':'#b88546'}
+    });
+    blocks.push(b); World.add(world,b);
+  }
+  status('Modo Builder — arrasta peças e constrói!');
+}
+
+function setupMouse(){
+  const mouse = Mouse.create(render.canvas);
+  const mouseConstraint = MouseConstraint.create(engine, {
+    mouse, constraint:{ stiffness:0.6, render:{ visible:false } }
+  });
+  World.add(world, mouseConstraint);
+  render.mouse=mouse;
+
+  // Click inteligente: remover bloco apenas em "click" (sem arrastar)
+  let downInfo = { active:false, x:0, y:0, t:0 };
+  const canvas = render.canvas;
+
+  canvas.addEventListener('pointerdown', e=>{
+    if(mode!=="play") return;
+    if(e.pointerType==='mouse' && e.button!==0) return; // apenas botão principal no rato
+    downInfo = { active:true, x:e.offsetX, y:e.offsetY, t:performance.now() };
+  }, { passive:false });
+
+  canvas.addEventListener('pointerup', e=>{
+    if(!downInfo.active) return;
+    const dt = performance.now() - downInfo.t;
+    const dx = e.offsetX - downInfo.x, dy = e.offsetY - downInfo.y;
+    const moved = Math.hypot(dx,dy) > 6;
+    if(mode==='play' && !moved && dt < 220){
+      const p={x:e.offsetX,y:e.offsetY};
+      const found=Query.point(blocks,p);
+      if(found.length){
+        World.remove(world,found[0]);
+        blocks = blocks.filter(b=>b!==found[0]);
+      }
+    }
+    downInfo.active=false;
+  }, { passive:false });
+}
+
+function toggle3D(){
+  mode3D=!mode3D;
+  document.getElementById('toggle3D').classList.toggle('btnActive',mode3D);
+  blocks.forEach(b=>{
+    const c=b.render.fillStyle;
+    b.render.fillStyle=mode3D?shade(c,-15):c.startsWith('#')?c:'#d1a76a';
+  });
+}
+
+function toggleGravity(){
+  if(mode!=='builder')return;
+  gravityActive=!gravityActive;
+  engine.gravity.y=gravityActive?1:0;
+  document.getElementById('testGravity').classList.toggle('btnActive',gravityActive);
+  blocks.forEach(b=>b.isSleeping=false);
+  status(gravityActive?'Gravidade ligada!':'Gravidade desligada.');
+}
+
+function clearBlocks(){ blocks.forEach(b=>World.remove(world,b)); blocks=[]; }
+
+function shade(hex,percent){
+  const f=parseInt(hex.slice(1),16),t=percent<0?0:255,p=Math.abs(percent)/100;
+  const R=f>>16,G=f>>8&0x00FF,B=f&0x0000FF;
+  return "#"+(0x1000000+
+    (Math.round((t-R)*p)+R)*0x10000+
+    (Math.round((t-G)*p)+G)*0x100+
+    (Math.round((t-B)*p)+B)).toString(16).slice(1);
+}
+
+function status(msg){ document.getElementById('status').textContent=msg; }
+
+// UI
+document.getElementById('playMode').onclick=()=>{
+  mode='play';engine.gravity.y=1;
+  document.getElementById('playMode').classList.add('btnActive');
+  document.getElementById('builderMode').classList.remove('btnActive');
+  buildPlayTower();
+};
+document.getElementById('builderMode').onclick=()=>{
+  mode='builder';
+  document.getElementById('builderMode').classList.add('btnActive');
+  document.getElementById('playMode').classList.remove('btnActive');
+  buildBuilder();
+};
+document.getElementById('resetBtn').onclick=()=>{
+  if(mode==='play')buildPlayTower(); else buildBuilder();
+};
+document.getElementById('toggle3D').onclick=toggle3D;
+document.getElementById('testGravity').onclick=toggleGravity;
+
+window.addEventListener('resize',init);
+init();
+</script>
 </body>
 </html>
+
