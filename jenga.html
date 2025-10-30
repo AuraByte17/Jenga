@@ -278,12 +278,14 @@
                     let x, z;
                     
                     if (isRotated) {
-                        x = 0;
-                        z = (j - 1) * (BLOCK_WIDTH + 0.01); // Espaçamento reduzido
-                        blockBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
-                    } else {
+                        // Longo eixo ao longo de Z; os 3 blocos devem ser posicionados lado a lado no eixo X
                         x = (j - 1) * (BLOCK_WIDTH + 0.01); // Espaçamento reduzido
                         z = 0;
+                        blockBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
+                    } else {
+                        // Longo eixo ao longo de X; os 3 blocos devem ser posicionados lado a lado no eixo Z
+                        x = 0;
+                        z = (j - 1) * (BLOCK_WIDTH + 0.01); // Espaçamento reduzido
                     }
                     
                     // Remover offsets aleatórios para maior estabilidade
