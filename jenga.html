@@ -120,12 +120,23 @@
 
     <div id="info-box">
         <h1>Torre Instável</h1>
-        <p><strong>Objectivo:</strong> Mova os blocos de baixo para o topo sem deixar a torre cair!</p>
-        <p><strong>Controlos:</strong>
-            <li><strong>Rodar Câmara:</strong> Botão direito do rato ou 2 dedos</li>
-            <li><strong>Mover Bloco:</strong> Clicar e arrastar o bloco</li>
-            <li><strong>Zoom:</strong> Roda do rato ou pinça</li>
-        </p>
+        <div id="mode-controls" style="margin-bottom:10px;">
+            <button id="jenga-mode-button">Modo Jenga</button>
+            <button id="builder-mode-button" style="margin-left:8px;">Modo Builder</button>
+        </div>
+        <div id="builder-controls" style="margin-bottom:10px; display:none;">
+            <button id="add-block-button">Adicionar bloco</button>
+            <button id="clear-builder-button" style="margin-left:8px;">Limpar</button>
+        </div>
+        <div id="help-text">
+            <p><strong>Objectivo (Jenga):</strong> Retira blocos e evita que a torre caia.</p>
+            <p><strong>Objectivo (Builder):</strong> Constrói livremente com blocos e física estável.</p>
+            <p><strong>Controlos:</strong>
+                <li><strong>Rodar Câmara:</strong> Botão direito do rato ou 2 dedos</li>
+                <li><strong>Mover Bloco:</strong> Clicar e arrastar o bloco</li>
+                <li><strong>Zoom:</strong> Roda do rato ou pinça</li>
+            </p>
+        </div>
     </div>
 
     <div id="status">A segurar bloco...</div>
@@ -143,6 +154,9 @@
         let world; 
         let blocks = []; 
         let gameState = 'SELECT_BLOCK'; 
+
+        const MODES = { JENGA: 'JENGA', BUILDER: 'BUILDER' };
+        let mode = MODES.JENGA;
 
         const BLOCK_HEIGHT = 0.5;
         const BLOCK_WIDTH = 0.5;
@@ -165,6 +179,7 @@
         let selectedMesh = null;
         let grabConstraint = null;
         let grabBody;
+        let clock;
         
         let isDragging = false;
         let dragStartPos = { x: 0, y: 0 };
@@ -172,15 +187,27 @@
         function init() {
             world = new CANNON.World();
             world.gravity.set(0, -9.82, 0);
-            world.broadphase = new CANNON.NaiveBroadphase();
-            world.solver.iterations = 30;
+            // Broadphase e solver mais estáveis
+            world.broadphase = new CANNON.SAPBroadphase(world);
+            world.solver.iterations = 50;
+            world.solver.tolerance = 0.001;
             world.allowSleep = true;
 
+            // Material de contacto por defeito mais estável
+            world.defaultContactMaterial.friction = 0.8;
+            world.defaultContactMaterial.restitution = 0.02;
+            world.defaultContactMaterial.contactEquationStiffness = 1e9;
+            world.defaultContactMaterial.contactEquationRelaxation = 5;
+            world.defaultContactMaterial.frictionEquationStiffness = 1e5;
+            world.defaultContactMaterial.frictionEquationRelaxation = 3;
+
             const block_block_contact = new CANNON.ContactMaterial(blockMaterial, blockMaterial, {
-                friction: 0.8,
-                restitution: 0.0,
-                contactEquationStiffness: 1e8,
-                contactEquationRelaxation: 3
+                friction: 0.85,
+                restitution: 0.02,
+                contactEquationStiffness: 1e9,
+                contactEquationRelaxation: 5,
+                frictionEquationStiffness: 1e5,
+                frictionEquationRelaxation: 3
             });
             world.addContactMaterial(block_block_contact);
 
@@ -238,6 +265,13 @@
             canvas.addEventListener('touchmove', onTouchMove, { passive: false });
             canvas.addEventListener('touchend', onTouchEnd);
 
+            // UI listeners
+            document.getElementById('jenga-mode-button').addEventListener('click', () => enterJengaMode());
+            document.getElementById('builder-mode-button').addEventListener('click', () => enterBuilderMode());
+            document.getElementById('add-block-button').addEventListener('click', addBuilderBlock);
+            document.getElementById('clear-builder-button').addEventListener('click', () => { if (mode === MODES.BUILDER) clearBlocks(); });
+
+            clock = new THREE.Clock();
             animate();
         }
 
@@ -270,7 +304,7 @@
                         mass: 0,
                         type: CANNON.Body.STATIC,
                         material: blockMaterial,
-                        linearDamping: 0.5,
+                        linearDamping: 0.4,
                         angularDamping: 0.5
                     });
                     let x, z;
@@ -306,8 +340,9 @@
         function animate() {
             requestAnimationFrame(animate);
 
+            const dt = clock.getDelta();
             if (gameState !== 'GAME_OVER') {
-                world.step(1 / 60);
+                world.step(1 / 60, dt, 4);
             }
             
             controls.update(); 
@@ -315,9 +350,14 @@
             for (const block of blocks) {
                 block.mesh.position.copy(block.body.position);
                 block.mesh.quaternion.copy(block.body.quaternion);
+                // Limitar velocidades para estabilidade
+                if (block.body.type === CANNON.Body.DYNAMIC) {
+                    clampVec3(block.body.velocity, 12);
+                    clampVec3(block.body.angularVelocity, 18);
+                }
             }
 
-            if (gameState === 'SELECT_BLOCK') {
+            if (mode === MODES.JENGA && gameState === 'SELECT_BLOCK') {
                 checkCollapse();
             }
 
@@ -342,7 +382,9 @@
         function triggerGameOver() {
             if (gameState === 'GAME_OVER') return;
             gameState = 'GAME_OVER';
-            document.getElementById('game-over').style.display = 'block';
+            if (mode === MODES.JENGA) {
+                document.getElementById('game-over').style.display = 'block';
+            }
             document.getElementById('status').style.display = 'none';
         }
 
@@ -352,11 +394,7 @@
                 grabConstraint = null;
             }
 
-            for (const block of blocks) {
-                scene.remove(block.mesh);
-                world.removeBody(block.body);
-            }
-            blocks = [];
+            clearBlocks();
 
             document.getElementById('game-over').style.display = 'none';
             document.getElementById('status').style.display = 'none';
@@ -364,11 +402,23 @@
             selectedBody = null;
             selectedMesh = null;
 
-            buildTower();
-
-            controls.target.set(0, TOWER_LAYERS * BLOCK_HEIGHT * 0.5, 0);
-            camera.position.set(5, TOWER_LAYERS * BLOCK_HEIGHT * 0.7, 5);
+            if (mode === MODES.JENGA) {
+                buildTower();
+                controls.target.set(0, TOWER_LAYERS * BLOCK_HEIGHT * 0.5, 0);
+                camera.position.set(5, TOWER_LAYERS * BLOCK_HEIGHT * 0.7, 5);
+            } else {
+                controls.target.set(0, BLOCK_HEIGHT * 2, 0);
+                camera.position.set(6, 6, 6);
+            }
             controls.update();
+        }
+
+        function clearBlocks() {
+            for (const block of blocks) {
+                scene.remove(block.mesh);
+                world.removeBody(block.body);
+            }
+            blocks = [];
         }
 
         function getIntersect(clientX, clientY) {
@@ -384,8 +434,16 @@
             // Converter bloco de STATIC para DYNAMIC
             body.type = CANNON.Body.DYNAMIC;
             body.mass = 1.0;
+            configureDynamicBody(body);
             body.updateMassProperties();
             body.wakeUp();
+        }
+
+        function configureDynamicBody(body) {
+            body.linearDamping = 0.3;
+            body.angularDamping = 0.5;
+            body.sleepSpeedLimit = 0.1;
+            body.sleepTimeLimit = 0.5;
         }
 
         function makeSurroundingBlocksDynamic(selectedBody) {
@@ -407,8 +465,10 @@
         function grabBlock(intersect, clientX, clientY) {
             const clickedMesh = intersect.object;
             
-            if (clickedMesh.position.y > currentTopY - BLOCK_HEIGHT * 3.5) {
-                return false;
+            if (mode === MODES.JENGA) {
+                if (clickedMesh.position.y > currentTopY - BLOCK_HEIGHT * 3.5) {
+                    return false;
+                }
             }
 
             gameState = 'BLOCK_HELD';
@@ -418,17 +478,25 @@
             // Converter bloco para dinâmico quando agarrado
             makeBlockDynamic(selectedBody);
             
-            // Tornar blocos próximos também dinâmicos
-            makeSurroundingBlocksDynamic(selectedBody);
+            // Tornar blocos próximos também dinâmicos (só no JENGA)
+            if (mode === MODES.JENGA) {
+                makeSurroundingBlocksDynamic(selectedBody);
+            }
             
             // Feedback visual
             selectedMesh.material.emissive = new THREE.Color(0x444444);
             document.getElementById('status').style.display = 'block';
 
-            movePlane.setFromNormalAndCoplanarPoint(
-                camera.getWorldDirection(movePlane.normal),
-                intersect.point
-            );
+            if (mode === MODES.BUILDER) {
+                // Movimento plano horizontal à altura do bloco
+                movePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -selectedBody.position.y);
+            } else {
+                // Plano perpendicular à câmara
+                movePlane.setFromNormalAndCoplanarPoint(
+                    camera.getWorldDirection(movePlane.normal),
+                    intersect.point
+                );
+            }
 
             grabBody.position.copy(intersect.point);
 
@@ -440,7 +508,7 @@
                 new CANNON.Vec3(0, 0, 0),
                 selectedBody, 
                 localPoint,
-                1000
+                mode === MODES.BUILDER ? 300 : 1000
             );
             world.addConstraint(grabConstraint);
             
@@ -463,13 +531,13 @@
             if (newIntersectPoint) {
                 grabBody.position.copy(newIntersectPoint);
                 
-                if (selectedBody) {
+                if (selectedBody && mode === MODES.JENGA) {
                     const direction = new CANNON.Vec3(
                         newIntersectPoint.x - selectedBody.position.x,
                         newIntersectPoint.y - selectedBody.position.y,
                         newIntersectPoint.z - selectedBody.position.z
                     );
-                    direction.scale(5, direction);
+                    direction.scale(4, direction);
                     selectedBody.velocity.copy(direction);
                 }
             }
@@ -488,6 +556,11 @@
             
             if (selectedBody) {
                 selectedBody.wakeUp();
+                if (mode === MODES.BUILDER) {
+                    // Reduzir velocidade após soltar para evitar instabilidades
+                    selectedBody.velocity.scale(0.25, selectedBody.velocity);
+                    selectedBody.angularVelocity.scale(0.25, selectedBody.angularVelocity);
+                }
                 
                 if (selectedMesh && selectedMesh.userData.body) {
                     selectedMesh.material.emissive = new THREE.Color(0x000000);
@@ -552,6 +625,63 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function clampVec3(vec, maxLen) {
+            const len = Math.sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z);
+            if (len > maxLen && len > 0) {
+                const scale = maxLen / len;
+                vec.x *= scale; vec.y *= scale; vec.z *= scale;
+            }
+        }
+
+        function updateUIForMode() {
+            const builderControls = document.getElementById('builder-controls');
+            const gameOver = document.getElementById('game-over');
+            if (mode === MODES.BUILDER) {
+                builderControls.style.display = 'block';
+                gameOver.style.display = 'none';
+            } else {
+                builderControls.style.display = 'none';
+            }
+        }
+
+        function enterJengaMode() {
+            mode = MODES.JENGA;
+            resetGame();
+            updateUIForMode();
+        }
+
+        function enterBuilderMode() {
+            mode = MODES.BUILDER;
+            resetGame();
+            updateUIForMode();
+        }
+
+        function addBuilderBlock() {
+            if (mode !== MODES.BUILDER) return;
+            const layerColor = colors[Math.floor(Math.random() * colors.length)];
+            const blockMaterialMesh = new THREE.MeshStandardMaterial({ color: layerColor });
+
+            const blockBody = new CANNON.Body({ 
+                mass: 1.0,
+                type: CANNON.Body.DYNAMIC,
+                material: blockMaterial
+            });
+            blockBody.addShape(blockShape);
+            configureDynamicBody(blockBody);
+
+            const target = controls.target.clone();
+            blockBody.position.set(target.x + (Math.random() - 0.5) * 2, BLOCK_HEIGHT * 1.5, target.z + (Math.random() - 0.5) * 2);
+            world.addBody(blockBody);
+
+            const blockMesh = new THREE.Mesh(blockGeometry, blockMaterialMesh);
+            blockMesh.castShadow = true;
+            blockMesh.receiveShadow = true;
+            blockBody.userData = { mesh: blockMesh, originalColor: layerColor };
+            blockMesh.userData = { body: blockBody };
+            scene.add(blockMesh);
+            blocks.push({ mesh: blockMesh, body: blockBody });
         }
 
         init();
