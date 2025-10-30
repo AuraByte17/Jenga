@@ -147,7 +147,7 @@
         const BLOCK_HEIGHT = 0.5;
         const BLOCK_WIDTH = 0.5;
         const BLOCK_DEPTH = 1.5;
-        const TOWER_LAYERS = 10; // Reduzido de 12 para 10
+        const TOWER_LAYERS = 10;
         const FALL_THRESHOLD = -5;
 
         let currentTopY; 
@@ -168,18 +168,16 @@
         
         let isDragging = false;
         let dragStartPos = { x: 0, y: 0 };
-        let gameStartTime = 0;
-        const STABILIZATION_TIME = 3000; // Aumentado para 3 segundos
 
         function init() {
             world = new CANNON.World();
-            world.gravity.set(0, -9.82, 0); // Gravidade real reduzida
+            world.gravity.set(0, -9.82, 0);
             world.broadphase = new CANNON.NaiveBroadphase();
-            world.solver.iterations = 30; // Aumentado de 20 para 30
+            world.solver.iterations = 30;
             world.allowSleep = true;
 
             const block_block_contact = new CANNON.ContactMaterial(blockMaterial, blockMaterial, {
-                friction: 0.8, // Aumentado de 0.6
+                friction: 0.8,
                 restitution: 0.0,
                 contactEquationStiffness: 1e8,
                 contactEquationRelaxation: 3
@@ -219,15 +217,13 @@
             controls.target.set(0, TOWER_LAYERS * BLOCK_HEIGHT * 0.5, 0);
             controls.enableDamping = true;
             controls.mouseButtons = {
-                LEFT: null, // Desativar rotação com botão esquerdo
+                LEFT: null,
                 MIDDLE: THREE.MOUSE.DOLLY,
                 RIGHT: THREE.MOUSE.ROTATE
             };
 
             createGround();
             buildTower();
-            
-            gameStartTime = Date.now(); // Marcar tempo de início
 
             window.addEventListener('resize', onWindowResize);
             document.getElementById('reset-button').addEventListener('click', resetGame);
@@ -269,35 +265,29 @@
                 const blockMaterialMesh = new THREE.MeshStandardMaterial({ color: layerColor });
 
                 for (let j = 0; j < 3; j++) {
+                    // Blocos começam como STATIC (congelados, sem física)
                     const blockBody = new CANNON.Body({ 
-                        mass: 1.0,
+                        mass: 0,
+                        type: CANNON.Body.STATIC,
                         material: blockMaterial,
-                        linearDamping: 0.5, // Aumentado de 0.3
-                        angularDamping: 0.5 // Aumentado de 0.3
+                        linearDamping: 0.5,
+                        angularDamping: 0.5
                     });
                     let x, z;
                     
                     if (isRotated) {
                         x = 0;
-                        z = (j - 1) * (BLOCK_WIDTH + 0.01); // Espaçamento reduzido
+                        z = (j - 1) * (BLOCK_WIDTH + 0.01);
                         blockBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
                     } else {
-                        x = (j - 1) * (BLOCK_WIDTH + 0.01); // Espaçamento reduzido
+                        x = (j - 1) * (BLOCK_WIDTH + 0.01);
                         z = 0;
                     }
                     
-                    // Remover offsets aleatórios para maior estabilidade
                     blockBody.position.set(x, currentTopY, z); 
                     
                     blockBody.addShape(blockShape);
                     world.addBody(blockBody);
-                    
-                    // Começar com blocos já "dormindo" para estabilidade inicial
-                    if (i < TOWER_LAYERS - 1) { // Todos exceto a última camada
-                        blockBody.sleep();
-                    }
-                    blockBody.allowSleep = true;
-                    blockBody.sleepSpeedLimit = 0.05; // Mais sensível
 
                     const blockMesh = new THREE.Mesh(blockGeometry, blockMaterialMesh);
                     blockMesh.castShadow = true;
@@ -335,16 +325,13 @@
         }
 
         function checkCollapse() {
-            // Não verificar durante período de estabilização
-            if (Date.now() - gameStartTime < STABILIZATION_TIME) {
-                return;
-            }
-            
             for (const block of blocks) {
+                // Só verificar blocos dinâmicos (que já foram tocados)
+                if (block.body.type !== CANNON.Body.DYNAMIC) continue;
+                
                 const up = new THREE.Vector3(0, 1, 0);
                 const blockUp = new THREE.Vector3(0, 1, 0).applyQuaternion(block.mesh.quaternion);
                 
-                // Verificação mais tolerante
                 if (block.body.position.y < FALL_THRESHOLD || up.dot(blockUp) < 0.3) {
                     triggerGameOver();
                     break;
@@ -382,8 +369,6 @@
             controls.target.set(0, TOWER_LAYERS * BLOCK_HEIGHT * 0.5, 0);
             camera.position.set(5, TOWER_LAYERS * BLOCK_HEIGHT * 0.7, 5);
             controls.update();
-            
-            gameStartTime = Date.now(); // Reiniciar tempo de estabilização
         }
 
         function getIntersect(clientX, clientY) {
@@ -393,6 +378,30 @@
             const intersectObjects = blocks.map(b => b.mesh);
             const intersects = raycaster.intersectObjects(intersectObjects);
             return intersects.length > 0 ? intersects[0] : null;
+        }
+
+        function makeBlockDynamic(body) {
+            // Converter bloco de STATIC para DYNAMIC
+            body.type = CANNON.Body.DYNAMIC;
+            body.mass = 1.0;
+            body.updateMassProperties();
+            body.wakeUp();
+        }
+
+        function makeSurroundingBlocksDynamic(selectedBody) {
+            // Tornar blocos próximos dinâmicos também
+            const selectedPos = selectedBody.position;
+            const proximityThreshold = BLOCK_DEPTH * 2;
+            
+            for (const block of blocks) {
+                if (block.body === selectedBody) continue;
+                if (block.body.type === CANNON.Body.DYNAMIC) continue;
+                
+                const distance = selectedPos.distanceTo(block.body.position);
+                if (distance < proximityThreshold) {
+                    makeBlockDynamic(block.body);
+                }
+            }
         }
 
         function grabBlock(intersect, clientX, clientY) {
@@ -405,7 +414,12 @@
             gameState = 'BLOCK_HELD';
             selectedBody = clickedMesh.userData.body;
             selectedMesh = clickedMesh;
-            selectedBody.wakeUp();
+            
+            // Converter bloco para dinâmico quando agarrado
+            makeBlockDynamic(selectedBody);
+            
+            // Tornar blocos próximos também dinâmicos
+            makeSurroundingBlocksDynamic(selectedBody);
             
             // Feedback visual
             selectedMesh.material.emissive = new THREE.Color(0x444444);
@@ -426,7 +440,7 @@
                 new CANNON.Vec3(0, 0, 0),
                 selectedBody, 
                 localPoint,
-                1000 // Aumentar a força da restrição
+                1000
             );
             world.addConstraint(grabConstraint);
             
@@ -449,7 +463,6 @@
             if (newIntersectPoint) {
                 grabBody.position.copy(newIntersectPoint);
                 
-                // Aplicar velocidade para ajudar o movimento
                 if (selectedBody) {
                     const direction = new CANNON.Vec3(
                         newIntersectPoint.x - selectedBody.position.x,
@@ -476,7 +489,6 @@
             if (selectedBody) {
                 selectedBody.wakeUp();
                 
-                // Remover feedback visual
                 if (selectedMesh && selectedMesh.userData.body) {
                     selectedMesh.material.emissive = new THREE.Color(0x000000);
                 }
@@ -489,7 +501,7 @@
         }
 
         function onMouseDown(event) {
-            if (event.button !== 0) return; // Só botão esquerdo
+            if (event.button !== 0) return;
             if (gameState !== 'SELECT_BLOCK') return;
             
             const intersect = getIntersect(event.clientX, event.clientY);
@@ -517,7 +529,6 @@
                     grabBlock(intersect, touch.clientX, touch.clientY);
                 }
             } else if (event.touches.length === 2) {
-                // 2 dedos = rodar câmara
                 releaseBlock();
             }
         }
