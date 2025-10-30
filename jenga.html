@@ -274,25 +274,29 @@
                         angularDamping: 0.5
                     });
                     let x, z;
-                    
+
+                    // Importante: as três peças de cada camada devem ser espaçadas no eixo da largura
+                    // (não no eixo do comprimento), para evitar sobreposição.
                     if (isRotated) {
-                        x = 0;
-                        z = (j - 1) * (BLOCK_WIDTH + 0.01);
-                        blockBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
-                    } else {
+                        // Camada rodada: o comprimento fica no eixo Z, portanto espaçamos no eixo X (largura)
                         x = (j - 1) * (BLOCK_WIDTH + 0.01);
                         z = 0;
+                        blockBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
+                    } else {
+                        // Camada não rodada: o comprimento fica no eixo X, portanto espaçamos no eixo Z (largura)
+                        x = 0;
+                        z = (j - 1) * (BLOCK_WIDTH + 0.01);
                     }
-                    
-                    blockBody.position.set(x, currentTopY, z); 
-                    
+
+                    blockBody.position.set(x, currentTopY, z);
+
                     blockBody.addShape(blockShape);
                     world.addBody(blockBody);
 
                     const blockMesh = new THREE.Mesh(blockGeometry, blockMaterialMesh);
                     blockMesh.castShadow = true;
                     blockMesh.receiveShadow = true;
-                    
+
                     blockBody.userData = { mesh: blockMesh, originalColor: layerColor };
                     blockMesh.userData = { body: blockBody };
 
